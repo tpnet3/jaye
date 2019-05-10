@@ -10,6 +10,7 @@ import pandas as pd
 import logging
 import datetime
 import pytz
+import os
 
 from urllib.parse import urlencode
 
@@ -24,13 +25,15 @@ class ClientError(Error):
 
 class BaseClient(object):
     def __init__(self, client_id=None, client_secret=None,
-                 timezone= settings.TIMEZONE,
-                 base_url= settings.BASE_URL):
+                 timezone='Asia/Seoul',
+                 base_url= 'http://www.jaye.cloud'):
         self._requests = []
         self.set_timezone(timezone=timezone)
         self.base_url = base_url
         self.access_token_url = self.base_url + '/oauth/token'
         self.authorize_url = self.base_url + '/oauth/authorize'
+        self._access_token = os.environ['ACCESS_TOKEN']
+        self._refresh_token = os.environ['REFRESH_TOKEN']
 
     # default time_zone = 'Asia/Seoul'
     def set_timezone(self, timezone):
@@ -108,8 +111,8 @@ class BaseClient(object):
 ### Public REST API methods ###
 class Client(BaseClient):
     def __init__(self,
-                 timezone=settings.TIMEZONE,
-                 base_url=settings.BASE_URL):
+                 timezone='Asia/Seoul',
+                 base_url='http://www.jaye.cloud'):
 
         super(Client, self). \
             __init__(timezone=timezone,
