@@ -3,6 +3,7 @@ Jaye API client
 <http://www.jaye.cloud>
 """
 
+import logging as log
 import requests
 import pandas as pd
 import logging
