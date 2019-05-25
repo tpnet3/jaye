@@ -1,17 +1,24 @@
 """
-Jaye API client
-<http://www.jaye.cloud>
-"""
+U&US API client
 
-import logging as log
+<https://api.uandus.net/api/v1.0/>
+"""
 import requests
 import pandas as pd
+import numpy as np
 import logging
 import datetime
 import pytz
 import os
 
 from urllib.parse import urlencode
+
+TIMEZONE = 'Asia/Seoul'
+# BASE_URL = 'http://127.0.0.1:8000'
+BASE_URL = 'http://www.jaye.cloud'
+
+
+log = logging.getLogger(__name__)
 
 
 class Error(Exception):
@@ -24,8 +31,8 @@ class ClientError(Error):
 
 class BaseClient(object):
     def __init__(self, client_id=None, client_secret=None,
-                 timezone='Asia/Seoul',
-                 base_url= 'http://www.jaye.cloud'):
+                 timezone=TIMEZONE,
+                 base_url=BASE_URL):
         self._requests = []
         self.set_timezone(timezone=timezone)
         self.base_url = base_url
@@ -44,7 +51,6 @@ class BaseClient(object):
         self._refresh_token = refresh_token
         resp = {'access_token': self._access_token,
                 'refresh_token': self._refresh_token}
-        print(resp)
         # self.set_auto_refresh_token()
 
     def get_token(self):
@@ -84,14 +90,20 @@ class BaseClient(object):
                    "Content-type": "application/json"}
         if method == 'GET':
             resp = requests.get(self.base_url + path, headers=headers)
+
+            if callback:
+                return callback(self._process_response(resp))
+            else:
+                return self._process_response(resp)
+
         elif method == 'POST':
             resp = requests.post(self.base_url + path, headers=headers, json=body)
 
-        # return resp
-        if callback:
-            return callback(self._process_response(resp))
-        else:
-            return self._process_response(resp)
+            # return resp
+            if callback:
+                return callback(self._process_response(resp))
+            else:
+                return resp
 
     def _process_response(self, resp):
         log.debug('< %s %s', resp.status_code, "something")
@@ -106,12 +118,11 @@ class BaseClient(object):
         return data
 
 
-
 ### Public REST API methods ###
 class Client(BaseClient):
     def __init__(self,
-                 timezone='Asia/Seoul',
-                 base_url='http://www.jaye.cloud'):
+                 timezone=TIMEZONE,
+                 base_url=BASE_URL):
 
         super(Client, self). \
             __init__(timezone=timezone,
@@ -130,7 +141,7 @@ class Client(BaseClient):
         return df
 
     def post_accounts(self, accounts, callback=None):
-        accounts = accounts.to_dict(orient='records')
+        accounts = accounts.replace({np.nan: None}).to_dict(orient='records')
         return self._post('/ams/account/', json_data=accounts)
 
     def get_subaccounts(self, callback=None):
@@ -139,7 +150,7 @@ class Client(BaseClient):
         return df
 
     def post_subaccounts(self, sub_accounts, callback=None):
-        sub_accounts = sub_accounts.to_dict(orient='records')
+        sub_accounts = sub_accounts.replace({np.nan: None}).to_dict(orient='records')
         return self._post('/ams/subaccount/', json_data=sub_accounts)
 
     def get_commodities(self, callback=None):
@@ -147,22 +158,50 @@ class Client(BaseClient):
         df = pd.DataFrame(data)
         return df
 
+    def post_commodities(self, commodities, callback=None):
+        commodities = commodities.replace({np.nan: None}).to_dict(orient='records')
+        return self._post('/ams/commodity/', json_data=commodities)
+
     def get_currency(self, callback=None):
         data = self._get('/ams/currency/', callback=callback)
         df = pd.DataFrame(data)
         return df
 
-    def get_ledger(self, callback=None):
-        data = self._get('/ams/ledger/', callback)
+    def post_currencies(self, currencies, callback=None):
+        currencies = currencies.replace({np.nan: None}).to_dict(orient='records')
+        return self._post('/ams/currency/', json_data=currencies)
+
+    def get_ledger(self, start_date=None, end_date=None, callback=None):
+        if start_date and end_date:
+            params = {'start_date': start_date, 'end_date': end_date}
+        else:
+            params = None
+
+        data = self._get('/ams/ledger/', params=params, callback=callback)
         return data
 
     def post_ledger(self, ledger, callback=None):
         return self._post('/ams/ledger/', json_data=ledger)
 
+    def get_accounting_report(self, callback=None):
+        data = self._get('/ams/report/balance-sheet', callback=callback)
+        df = pd.DataFrame(data)
+        return df
+
     ##### MIS ###############
     def get_stocks(self, callback=None):
         params = None
-        data = self._get('/mis/stocks/', params=params, callback=callback)
+        data = self._get('/mis/stock/list/', params=params, callback=callback)
+        df = pd.DataFrame(data)
+        return df
+
+    def post_stocks(self, stocks, callback=None):
+        stocks = stocks.replace({np.nan: None}).to_dict(orient='records')
+        return self._post('/mis/stock/list/', json_data=stocks)
+
+    def get_stock_daily_chart(self, code, start_date, end_date, callback=None):
+        params = {'code': code, 'start_date': start_date, 'end_date': end_date}
+        data = self._get('/mis/stock/daily-chart/', params=params, callback=callback)
         df = pd.DataFrame(data)
         return df
 
@@ -172,12 +211,17 @@ class Client(BaseClient):
         df = pd.DataFrame(data)
         return df
 
+    def post_daily_chart(self, daily_chart, callback=None):
+        daily_chart = daily_chart.replace({np.nan: None}).to_dict(orient='records')
+        return self._post('/mis/daily-chart/', json_data=daily_chart)
+
+
     ##### FAS ###############
     def get_risk_report(self, report_name, callback=None):
-        return self._get('/risk/report/{}'.format(report_name))
+        return self._get('/risk/report/{}/'.format(report_name))
 
     def get_pl(self, callback=None):
-        data = self._get('/quant/pl')
+        data = self._get('/quant/pl/')
         pl = data['pl']
         pl_total = data['pl_total']
         pl = pd.DataFrame(pl)
@@ -188,7 +232,8 @@ class Client(BaseClient):
         conclusion = conclusion.to_dict(orient='records')
         settings = {'conclusion': conclusion,
                     'tx_cost_rate': tx_cost_rate}
-        data = self._post('/quant/back-test', json_data=settings)
+        data = self._post('/fas/backtest/', json_data=settings)
+        data = data.json()
         pl = data['pl']
         pl_total = data['pl_total']
         pl = pd.DataFrame(pl)
@@ -209,5 +254,4 @@ class Client(BaseClient):
         data = self._get('/uandus/daily-chart/', params=params, callback=callback)
         df = pd.DataFrame(data)
         return df
-
 
